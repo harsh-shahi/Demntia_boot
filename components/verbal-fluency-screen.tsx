@@ -1,108 +1,86 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Timer, Volume2, Mic } from "lucide-react"
-import { useAudioRecorder } from "@/lib/use-audio-recorder"
-import { playBeep } from "@/lib/play-beep"
+import { Input } from "@/components/ui/input"
+import { Timer, Volume2, PenLine, Send, CheckCircle2 } from "lucide-react"
+import { assessmentStorage } from "@/lib/assessment-storage"
 
 interface VerbalFluencyScreenProps {
   onNext: (score: number) => void
 }
 
 export function VerbalFluencyScreen({ onNext }: VerbalFluencyScreenProps) {
-  const [stage, setStage] = useState<"instruction" | "preparing" | "active" | "complete">("instruction")
+  const [stage, setStage] = useState<"instruction" | "active" | "complete">("instruction")
   const [timeLeft, setTimeLeft] = useState(20)
-  const [wordCount, setWordCount] = useState(0)
-  const { isRecording, startRecording, stopRecording, audioBlob } = useAudioRecorder()
-  const [isMounted, setIsMounted] = useState(true)
+  const [currentInput, setCurrentInput] = useState("")
+  const [wordList, setWordList] = useState<string[]>([])
+  const isMounted = useRef(true)
 
   const speak = (text: string) => {
-    return new Promise<void>((resolve) => {
-      if ("speechSynthesis" in window && isMounted) {
-        window.speechSynthesis.cancel()
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.rate = 0.9
-        utterance.lang = "en-US"
-        utterance.onend = () => resolve()
-        window.speechSynthesis.speak(utterance)
-      } else {
-        resolve()
-      }
-    })
+    if ("speechSynthesis" in window && isMounted.current) {
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = 0.9
+      utterance.lang = "en-US"
+      window.speechSynthesis.speak(utterance)
+    }
   }
 
   useEffect(() => {
-    setIsMounted(true)
+    isMounted.current = true
     if (stage === "instruction") {
-      speak("Name as many kitchen items as you can in 20 seconds.")
+      speak("Type as many words starting with the letter F as you can in 20 seconds. Ready?")
     }
     return () => {
-      setIsMounted(false)
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel()
-      }
+      isMounted.current = false
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
     }
-  }, [])
+  }, [stage])
 
   useEffect(() => {
     if (stage === "active" && timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000)
-      return () => clearTimeout(timer)
+      const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000)
+      return () => clearInterval(timer)
     } else if (stage === "active" && timeLeft === 0) {
-      stopRecording()
       setStage("complete")
     }
-  }, [stage, timeLeft, stopRecording])
+  }, [stage, timeLeft])
 
-  useEffect(() => {
-    if (isRecording) {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel()
-      }
+  const handleAddWord = () => {
+    const word = currentInput.trim().toLowerCase()
+    
+    // VALIDATION:
+    // 1. Must start with 'f'
+    // 2. Must be longer than 1 letter
+    // 3. Must not be a duplicate
+    if (word.startsWith("f") && word.length > 1 && !wordList.includes(word)) {
+      setWordList((prev) => [...prev, word])
+      setCurrentInput("")
+    } else {
+      // Small visual feedback or ignore
+      setCurrentInput("")
     }
-  }, [isRecording])
-
-  const startTest = async () => {
-    setStage("preparing")
-
-    // Brief instruction in smaller text
-    await speak("Get ready")
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    await speak("Speak after the beep")
-    await playBeep()
-
-    // Start recording and timer
-    setStage("active")
-    setTimeout(() => {
-      startRecording()
-    }, 300)
   }
 
-  const handleFinish = async () => {
-    if (audioBlob) {
-      try {
-        const formData = new FormData()
-        formData.append("audio", audioBlob, "verbal-fluency.webm")
-        formData.append("testType", "verbal-fluency")
+  const handleFinish = () => {
+    /**
+     * --- MARKING SCHEME ---
+     * In 20 seconds:
+     * 0-2 words: 0 points
+     * 3-5 words: 1 point
+     * 6-8 words: 2 points
+     * 9+ words: 3 points
+     */
+    let score = 0
+    const count = wordList.length
+    if (count >= 9) score = 3
+    else if (count >= 6) score = 2
+    else if (count >= 3) score = 1
 
-        const response = await fetch("/api/verify-audio", {
-          method: "POST",
-          body: formData,
-        })
-
-        if (response.ok) {
-          console.log("[v0] Verbal fluency audio sent successfully")
-        }
-      } catch (error) {
-        console.error("[v0] Error sending audio:", error)
-      }
-    }
-
-    // Mock score for now
-    const score = 5
+    // Save to orientation or a new breakdown category if you have one
+    assessmentStorage.saveScore("orientation", score)
     onNext(score)
   }
 
@@ -111,27 +89,27 @@ export function VerbalFluencyScreen({ onNext }: VerbalFluencyScreenProps) {
       <div className="flex flex-col items-center justify-center min-h-[80vh] animate-slide-up">
         <Card className="w-full max-w-lg p-8 md:p-12 rounded-3xl shadow-xl border-2">
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-secondary/20 rounded-2xl mb-6">
-              <Mic className="w-12 h-12 text-primary" strokeWidth={2.5} />
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-primary/10 rounded-2xl mb-6">
+              <PenLine className="w-12 h-12 text-primary" strokeWidth={2.5} />
             </div>
 
-            <h2 className="text-3xl font-bold mb-6 text-foreground">Speaking Test</h2>
+            <h2 className="text-3xl font-bold mb-6">Fluency Test</h2>
 
             <p className="text-xl leading-relaxed text-foreground/90 mb-8">
-              Name as many kitchen items as you can in 20 seconds.
+              Type as many words starting with the letter <strong className="text-primary text-2xl">"F"</strong> as you can in 20 seconds.
             </p>
 
             <div className="space-y-4">
               <Button
-                onClick={startTest}
+                onClick={() => setStage("active")}
                 size="lg"
                 className="w-full h-20 text-2xl rounded-2xl shadow-lg hover:scale-105 transition-transform"
               >
-                Continue
+                Start Timer
               </Button>
 
               <Button
-                onClick={() => speak("Name as many kitchen items as you can in 20 seconds")}
+                onClick={() => speak("Type as many words starting with the letter F as you can in 20 seconds.")}
                 variant="outline"
                 size="lg"
                 className="w-full h-16 text-lg rounded-2xl"
@@ -146,47 +124,51 @@ export function VerbalFluencyScreen({ onNext }: VerbalFluencyScreenProps) {
     )
   }
 
-  if (stage === "preparing") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh]">
-        <Card className="w-full max-w-lg p-12 rounded-3xl shadow-xl border-2">
-          <div className="text-center">
-            <Mic className="w-16 h-16 text-primary mx-auto mb-6 animate-pulse" strokeWidth={2.5} />
-            <p className="text-lg text-foreground/70">Get ready...</p>
-          </div>
-        </Card>
-      </div>
-    )
-  }
-
   if (stage === "active") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh]">
-        <Card className="w-full max-w-lg p-12 md:p-16 rounded-3xl shadow-xl border-2 bg-gradient-to-br from-primary/5 to-secondary/5">
-          <div className="text-center">
-            <div className="mb-6">
-              {isRecording ? (
-                <Mic className="w-16 h-16 text-red-500 mx-auto animate-pulse" strokeWidth={2.5} />
-              ) : (
-                <Timer className="w-16 h-16 text-primary mx-auto" strokeWidth={2.5} />
-              )}
+        <Card className="w-full max-w-lg p-8 md:p-10 rounded-3xl shadow-xl border-2">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full">
+              <Timer className="w-5 h-5 text-primary" />
+              <span className="text-2xl font-mono font-bold text-primary">{timeLeft}s</span>
+            </div>
+            <div className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
+              Words: {wordList.length}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="relative">
+              <Input
+                value={currentInput}
+                onChange={(e) => setCurrentInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddWord()}
+                placeholder="Type 'F' word and press Enter"
+                className="h-20 text-2xl text-center rounded-2xl border-2 focus:border-primary pr-16"
+                autoFocus
+                autoComplete="off"
+              />
+              <Button 
+                onClick={handleAddWord}
+                className="absolute right-2 top-2 h-16 w-16 rounded-xl"
+                disabled={!currentInput.trim()}
+              >
+                <Send className="w-6 h-6" />
+              </Button>
             </div>
 
-            <p className="text-8xl font-bold text-primary mb-8 animate-bounce-in">{timeLeft}</p>
-
-            <p className="text-2xl text-foreground/90 mb-6">Keep naming kitchen items!</p>
-
-            <Button
-              onClick={() => {
-                stopRecording()
-                setStage("complete")
-              }}
-              size="lg"
-              variant="outline"
-              className="w-full h-16 text-lg rounded-2xl"
-            >
-              Stop & Submit
-            </Button>
+            {/* Word Bubbles Container */}
+            <div className="flex flex-wrap gap-2 min-h-[100px] p-4 bg-secondary/20 rounded-2xl border border-dashed">
+              {wordList.length === 0 && (
+                <p className="text-muted-foreground text-center w-full mt-6 italic">Words will appear here...</p>
+              )}
+              {wordList.map((word, i) => (
+                <span key={i} className="px-4 py-2 bg-white rounded-full shadow-sm border text-primary font-medium animate-in zoom-in">
+                  {word}
+                </span>
+              ))}
+            </div>
           </div>
         </Card>
       </div>
@@ -197,13 +179,14 @@ export function VerbalFluencyScreen({ onNext }: VerbalFluencyScreenProps) {
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-slide-up">
       <Card className="w-full max-w-lg p-8 md:p-12 rounded-3xl shadow-xl border-2">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-primary rounded-2xl mb-6">
-            <span className="text-4xl">✓</span>
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-2xl mb-6">
+            <CheckCircle2 className="w-12 h-12 text-green-600" />
           </div>
 
-          <h2 className="text-3xl font-bold mb-6 text-foreground">Time{"'"}s Up!</h2>
-
-          <p className="text-xl leading-relaxed text-foreground/90 mb-8">Great job naming kitchen items!</p>
+          <h2 className="text-3xl font-bold mb-4">Time{"'"}s Up!</h2>
+          <p className="text-xl text-muted-foreground mb-8">
+            You named <span className="text-primary font-bold">{wordList.length}</span> unique words starting with F.
+          </p>
 
           <Button
             onClick={handleFinish}

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { PenLine, Volume2, Send, RotateCcw } from "lucide-react"
 import { useTextRecall } from "@/hooks/useTextRecall"
+import { assessmentStorage } from "@/lib/assessment-storage"
 
 interface DelayedRecallScreenProps {
   onNext: (score: number) => void
@@ -16,12 +17,12 @@ const targetWords = ["Rain", "Market", "Spoon", "Flower", "Tiger", "Window"]
 export function DelayedRecallScreen({ onNext }: DelayedRecallScreenProps) {
   const [stage, setStage] = useState<"instruction" | "typing">("instruction")
   const [isProcessing, setIsProcessing] = useState(false)
-  const { userInput, setUserInput, calculateScore, clearInput } = useTextRecall()
+  const { userInput, setUserInput, clearInput } = useTextRecall()
 
   const speak = (text: string): Promise<void> => {
     return new Promise((resolve) => {
       if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel() // Stop any current speech
+        window.speechSynthesis.cancel()
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.rate = 0.8
         utterance.lang = "en-US"
@@ -44,15 +45,31 @@ export function DelayedRecallScreen({ onNext }: DelayedRecallScreenProps) {
 
     setIsProcessing(true)
     try {
-      const score = calculateScore(targetWords)
-      
-      // Sending text data to the backend instead of audio
+      /** * --- MARKING SCHEME ---
+       * Normalizing input to lowercase and matching against target list.
+       */
+      const userWords = userInput
+        .toLowerCase()
+        .split(/[,\s\n]+/)
+        .map(w => w.replace(/[^a-z]/g, ""))
+        .filter(w => w.length > 0)
+
+      const targets = targetWords.map(w => w.toLowerCase())
+      const score = targets.filter(target => userWords.includes(target)).length
+
+      /**
+       * --- STORAGE HANDLER ---
+       * We pass the total score for this section. 
+       * Our assessmentStorage handler takes care of incrementing the grand total.
+       */
+      assessmentStorage.saveScore("delayedRecall", score)
+
+      // Send to backend for logging purposes
       await fetch("/api/verify-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           testType: "delayed-recall",
-          input: userInput,
           score: score 
         }),
       })
@@ -60,8 +77,10 @@ export function DelayedRecallScreen({ onNext }: DelayedRecallScreenProps) {
       onNext(score)
     } catch (e) {
       console.error("Submission error:", e)
-      // Fallback: move forward even if API fails
-      onNext(calculateScore(targetWords))
+      // Fallback: Proceed with locally calculated score
+      const fallbackUserWords = userInput.toLowerCase().split(/[,\s\n]+/)
+      const finalScore = targetWords.filter(t => fallbackUserWords.includes(t.toLowerCase())).length
+      onNext(finalScore)
     } finally {
       setIsProcessing(false)
     }

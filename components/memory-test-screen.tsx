@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Brain, Volume2 } from "lucide-react"
+import { Brain, Volume2, CheckCircle2 } from "lucide-react"
+import { assessmentStorage } from "@/lib/assessment-storage"
 
 interface MemoryTestScreenProps {
   onNext: (score: number) => void
@@ -14,8 +15,10 @@ const words = ["Rain", "Market", "Spoon", "Flower", "Tiger", "Window"]
 export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
   const [stage, setStage] = useState<"instruction" | "speaking" | "complete">("instruction")
   const [currentWordIndex, setCurrentWordIndex] = useState(0)
-  const isMounted = useRef(true)
-  const continueReminderTimer = useRef<NodeJS.Timeout>()
+  
+  // FIXED: Explicitly type and initialize refs to avoid "undefined" errors
+  const isMounted = useRef<boolean>(true)
+  const continueReminderTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const speak = (text: string, rate = 0.8) => {
     if ("speechSynthesis" in window && isMounted.current) {
@@ -42,7 +45,7 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
   }
 
   const speakWord = (index: number) => {
-    if (index < words.length) {
+    if (index < words.length && isMounted.current) {
       speak(words[index], 0.7)
     }
   }
@@ -53,6 +56,7 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
         "I'll say some words out loud. Listen carefully and try to remember them. We'll ask you to recall them later.",
       )
     }
+    
     if (stage === "speaking" && currentWordIndex < words.length) {
       const timer = setTimeout(() => {
         if (currentWordIndex < words.length - 1) {
@@ -60,8 +64,10 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
           speakWord(currentWordIndex + 1)
         } else {
           setTimeout(() => {
-            setStage("complete")
-            speak("Good! Try to keep those words in your mind. We'll ask you to recall them later.")
+            if (isMounted.current) {
+              setStage("complete")
+              speak("Good! Try to keep those words in your mind. We'll ask you to recall them later.")
+            }
           }, 1500)
         }
       }, 2000)
@@ -73,12 +79,8 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
     isMounted.current = true
     return () => {
       isMounted.current = false
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel()
-      }
-      if (continueReminderTimer.current) {
-        clearTimeout(continueReminderTimer.current)
-      }
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
+      if (continueReminderTimer.current) clearTimeout(continueReminderTimer.current)
     }
   }, [])
 
@@ -87,14 +89,22 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
       continueReminderTimer.current = setTimeout(() => {
         speak("When you're ready, press the Continue button to move to the next test")
       }, 10000)
-
-      return () => {
-        if (continueReminderTimer.current) {
-          clearTimeout(continueReminderTimer.current)
-        }
-      }
     }
   }, [stage])
+
+  const handleFinish = () => {
+    /**
+     * --- MARKING LOGIC ---
+     * Learning phase usually awards 0 marks.
+     * The score is handled during the Delayed Recall screen.
+     */
+    const initialScore = 0 
+    
+    // We update the storage for orientation just in case you want to track completion
+    assessmentStorage.saveScore("orientation", initialScore)
+    
+    onNext(initialScore)
+  }
 
   if (stage === "instruction") {
     return (
@@ -128,7 +138,7 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
                 className="w-full h-16 text-lg rounded-2xl bg-transparent"
               >
                 <Volume2 className="w-6 h-6 mr-2" />
-                Preview Instructions
+                Hear Words
               </Button>
             </div>
           </div>
@@ -153,8 +163,8 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
               {words.map((_, idx) => (
                 <div
                   key={idx}
-                  className={`w-3 h-3 rounded-full transition-all ${
-                    idx === currentWordIndex ? "bg-primary w-8" : idx < currentWordIndex ? "bg-primary" : "bg-muted"
+                  className={`h-3 rounded-full transition-all duration-500 ${
+                    idx === currentWordIndex ? "bg-primary w-12" : idx < currentWordIndex ? "bg-primary w-3" : "bg-muted w-3"
                   }`}
                 />
               ))}
@@ -169,8 +179,8 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-slide-up">
       <Card className="w-full max-w-lg p-8 md:p-12 rounded-3xl shadow-xl border-2">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-primary rounded-2xl mb-6">
-            <span className="text-4xl">✓</span>
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-2xl mb-6">
+            <CheckCircle2 className="w-12 h-12 text-green-600" />
           </div>
 
           <h2 className="text-3xl font-bold mb-6 text-foreground">Great Job!</h2>
@@ -181,7 +191,7 @@ export function MemoryTestScreen({ onNext }: MemoryTestScreenProps) {
           </p>
 
           <Button
-            onClick={() => onNext(6)}
+            onClick={handleFinish}
             size="lg"
             className="w-full h-20 text-2xl rounded-2xl shadow-lg hover:scale-105 transition-transform"
           >
