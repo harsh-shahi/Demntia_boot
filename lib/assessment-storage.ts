@@ -3,43 +3,57 @@ const STORAGE_KEY = "assessment_results";
 export interface AssessmentData {
   totalScore: number;
   breakdown: {
-    digitSpan: number;
-    delayedRecall: number;
+    // Current breakdown keys matching your Home page handleNext calls
     orientation: number;
+    memory: number;
+    digitSpan: number;
+    recall: number;
+    naming: number;
+    fluency: number;
+    command: number;
+    drawing: number;
+    stroop: number;
   };
 }
 
 const defaultData: AssessmentData = {
   totalScore: 0,
-  breakdown: { digitSpan: 0, delayedRecall: 0, orientation: 0 }
+  breakdown: {
+    orientation: 0,
+    memory: 0,
+    digitSpan: 0,
+    recall: 0,
+    naming: 0,
+    fluency: 0,
+    command: 0,
+    drawing: 0,
+    stroop: 0,
+  }
 };
 
 export const assessmentStorage = {
-  // Get existing data or return a default empty state
   get: (): AssessmentData => {
     if (typeof window === "undefined") return defaultData;
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? JSON.parse(saved) : defaultData;
   },
 
-  // Update a specific test score and increment the total
   saveScore: (testType: keyof AssessmentData["breakdown"], score: number) => {
     const data = assessmentStorage.get();
     
     /**
      * LOGIC:
-     * 1. Remove the previous score for THIS specific test from the totalScore 
-     * (This prevents double-adding if the user retakes a section).
-     * 2. Set the new score in the breakdown.
-     * 3. Add the new score to the totalScore.
+     * We subtract the old value for this specific key and add the new one.
+     * This ensures if a user hits "Back" or "Restart" within a session, 
+     * the total score remains accurate.
      */
-    data.totalScore = (data.totalScore - data.breakdown[testType]) + score;
+    const oldScore = data.breakdown[testType] || 0;
+    data.totalScore = (data.totalScore - oldScore) + score;
     data.breakdown[testType] = score;
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   },
 
-  // Reset everything for a new test
   clear: () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem(STORAGE_KEY);

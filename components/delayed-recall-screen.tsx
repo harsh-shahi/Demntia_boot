@@ -62,7 +62,7 @@ export function DelayedRecallScreen({ onNext }: DelayedRecallScreenProps) {
        * We pass the total score for this section. 
        * Our assessmentStorage handler takes care of incrementing the grand total.
        */
-      assessmentStorage.saveScore("delayedRecall", score)
+      assessmentStorage.saveScore("recall", score)
 
       // Send to backend for logging purposes
       await fetch("/api/verify-text", {

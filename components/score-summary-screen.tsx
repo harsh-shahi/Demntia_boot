@@ -7,6 +7,7 @@ import { Trophy, Sparkles, Brain, Target, CheckCircle2 } from "lucide-react"
 import { assessmentStorage } from "@/lib/assessment-storage"
 
 interface ScoreSummaryScreenProps {
+  totalScore: number
   onNext: () => void
 }
 
