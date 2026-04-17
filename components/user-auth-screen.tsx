@@ -28,7 +28,7 @@ export function UserAuthScreen({ onAuthenticated }: UserAuthScreenProps) {
 
     try {
       // 1. Attempt Login using the dynamic baseUrl
-      const loginRes = await fetch(`${baseUrl}/login`, {
+      const loginRes = await fetch(`${baseUrl}/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -41,7 +41,7 @@ export function UserAuthScreen({ onAuthenticated }: UserAuthScreenProps) {
         onAuthenticated(loginData.hashId)
       } else {
         // 2. Login failed (User doesn't exist), attempt Signup
-        const signupRes = await fetch(`${baseUrl}/signup`, {
+        const signupRes = await fetch(`${baseUrl}/users`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(formData),
