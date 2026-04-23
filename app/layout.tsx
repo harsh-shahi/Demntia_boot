@@ -4,31 +4,15 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
+// Import a client-side wrapper for the logic
+import { ClientLifecycle } from "@/components/ClientLifecycle" 
+
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
-// <CHANGE> Updated metadata for dementia screening app
 export const metadata: Metadata = {
   title: "Memory Check - Friendly Cognitive Screening",
-  description: "A friendly, accessible cognitive screening tool with a Duolingo-inspired interface",
-  generator: "v0.app",
-  icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
-  },
+  description: "A friendly, accessible cognitive screening tool",
 }
 
 export default function RootLayout({
@@ -37,8 +21,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`font-sans antialiased`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased" suppressHydrationWarning>
+        {/* All client logic (Refresh warning + Auth hydration) goes here */}
+        <ClientLifecycle /> 
+        
         {children}
         <Analytics />
       </body>
