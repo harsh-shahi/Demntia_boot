@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Brain, Sparkles, Volume2, Smartphone, ArrowRight, QrCode, Lock, UserCircle } from "lucide-react"
+import { Brain, Sparkles, Smartphone, ArrowRight, QrCode, Lock, UserCircle, History, X, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { QRCodeSVG } from "qrcode.react"
 import {
@@ -11,19 +11,33 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+
+interface Session {
+  sessionId: string
+  score: number
+  createdAt: string
+  data: {
+    timeTaken: number
+    testType: string
+  }
+}
 
 interface WelcomeScreenProps {
   onNext: () => void
 }
 
 export function WelcomeScreen({ onNext }: WelcomeScreenProps) {
-  const [isMounted, setIsMounted] = useState(true)
   const [showAppPrompt, setShowAppPrompt] = useState(false)
   const [step, setStep] = useState<"download" | "connect">("download")
   
-  // User Data States
+  // History States
+  const [showHistory, setShowHistory] = useState(false)
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
   const [userName, setUserName] = useState<string | null>(null)
   const [userHash, setUserHash] = useState("")
   const [actualOtp, setActualOtp] = useState("")
@@ -32,50 +46,34 @@ export function WelcomeScreen({ onNext }: WelcomeScreenProps) {
 
   const downloadUrl = process.env.NEXT_PUBLIC_APP_DOWNLOAD_URL || "#"
 
-  // Logic to prevent accidental refresh/data loss
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = "Are you sure? Refreshing will log you out and reset progress."
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload)
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload)
-    }
-  }, [])
-
-  useEffect(() => {
-    // 1. Check Session Storage first (Persists until tab closes)
-    const sessionName = sessionStorage.getItem("userName")
-    const sessionHash = sessionStorage.getItem("userHashId")
-
-    // 2. Fallback to Local Storage if session is empty
-    const savedHash = sessionHash || localStorage.getItem("userHashId") || "guest12"
-    const savedName = sessionName || localStorage.getItem("userName") || "User"
+    const savedHash = sessionStorage.getItem("userHashId") || localStorage.getItem("userHashId") || "guest12"
+    const savedName = sessionStorage.getItem("userName") || localStorage.getItem("userName") || "User"
 
     setUserHash(savedHash)
     setUserName(savedName)
 
-    // 3. Keep it in Session Storage for the current tab session
-    sessionStorage.setItem("userName", savedName)
-    sessionStorage.setItem("userHashId", savedHash)
-
     if (savedHash.length >= 2) {
       setActualOtp(savedHash.slice(-2))
     }
-
-    return () => {
-      setIsMounted(false)
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel()
-      }
-    }
   }, [])
 
+  const fetchHistory = async () => {
+    setLoadingHistory(true)
+    setShowHistory(true)
+    try {
+      const hash = localStorage.getItem("userHashId") || userHash
+      const response = await fetch(`https://sevasmriti.onrender.com/api/users/${hash}`)
+      const data = await response.json()
+      setSessions(data.sessions || [])
+    } catch (error) {
+      console.error("Failed to fetch history", error)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
   const handleVerifyAndContinue = () => {
-    // Case-insensitive check to be safe, though forced to lowercase in Input
     if (userOtpInput.trim().toLowerCase() === actualOtp.toLowerCase()) {
       onNext()
     } else {
@@ -86,11 +84,10 @@ export function WelcomeScreen({ onNext }: WelcomeScreenProps) {
   return (
     <div className="relative flex flex-col items-center justify-center min-h-[80vh] text-center animate-bounce-in">
       
-      {/* Top Right User Badge */}
       {userName && (
-        <div className="absolute top-[-40px] right-0 md:top-0 flex items-center gap-2 bg-secondary/50 px-4 py-2 rounded-full border border-border animate-in fade-in slide-in-from-right-4">
+        <div className="absolute top-[-40px] right-0 md:top-0 flex items-center gap-2 bg-secondary/50 px-4 py-2 rounded-full border border-border">
           <UserCircle className="w-5 h-5 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">
+          <span className="text-sm font-medium">
             Logged in as <span className="text-primary font-bold">{userName}</span>
           </span>
         </div>
@@ -103,28 +100,94 @@ export function WelcomeScreen({ onNext }: WelcomeScreenProps) {
         </div>
       </div>
 
-      <h1 className="text-4xl md:text-5xl font-bold mb-4 text-foreground">{"Let's check your memory!"}</h1>
+      <h1 className="text-4xl md:text-5xl font-bold mb-8 text-foreground">{"Let's check your memory!"}</h1>
       
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4 w-full max-w-sm">
         <Button
           onClick={() => setShowAppPrompt(true)}
           size="lg"
-          className="h-20 text-2xl px-12 rounded-2xl shadow-lg hover:scale-105 transition-transform"
+          className="h-20 text-2xl rounded-2xl shadow-lg hover:scale-105 transition-transform"
         >
           Start Your Check
         </Button>
+
+        <Button
+          onClick={fetchHistory}
+          variant="secondary"
+          size="lg"
+          className="h-20 text-2xl rounded-2xl shadow-md bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-indigo-200 border transition-all"
+        >
+          <History className="mr-2 w-6 h-6" />
+          History
+        </Button>
       </div>
 
+      {/* History Dialog */}
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className="sm:max-w-[500px] rounded-3xl p-6">
+          <DialogHeader className="relative">
+            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+              <History className="text-indigo-600" /> Assessment History
+            </DialogTitle>
+            <DialogDescription>Your previous performance records</DialogDescription>
+            <DialogClose className="absolute right-[-10px] top-[-10px] rounded-full p-2 bg-secondary hover:bg-secondary/80 transition-colors">
+              <X className="w-5 h-5" />
+            </DialogClose>
+          </DialogHeader>
+
+          <div className="mt-4 min-h-[200px] max-h-[400px] overflow-y-auto">
+            {loadingHistory ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                <p>Fetching records...</p>
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground font-medium">
+                No past records found.
+              </div>
+            ) : (
+              <div className="border rounded-xl overflow-hidden">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted text-muted-foreground uppercase text-xs font-bold">
+                    <tr>
+                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3">Time Taken</th>
+                      <th className="px-4 py-3 text-right">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {sessions.map((session, index) => (
+                      <tr key={session.sessionId} className="hover:bg-muted/50 transition-colors">
+                        <td className="px-4 py-4">
+                          <div className="font-medium text-foreground">Session #{sessions.length - index}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(session.createdAt).toLocaleDateString()}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-muted-foreground">
+                          {Math.floor(session.data.timeTaken / 60)}m {session.data.timeTaken % 60}s
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 font-bold">
+                            {session.score}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Original Connection Dialog */}
       <Dialog open={showAppPrompt} onOpenChange={(open) => {
         setShowAppPrompt(open)
-        if(!open) {
-            setStep("download")
-            setUserOtpInput("")
-            setIsError(false)
-        }
+        if(!open) { setStep("download"); setUserOtpInput(""); setIsError(false); }
       }}>
         <DialogContent className="sm:max-w-[425px] rounded-3xl overflow-hidden p-0">
-          
           {step === "download" ? (
             <div className="p-8">
               <DialogHeader className="items-center text-center">
@@ -132,90 +195,33 @@ export function WelcomeScreen({ onNext }: WelcomeScreenProps) {
                   <Smartphone className="w-12 h-12 text-primary" />
                 </div>
                 <DialogTitle className="text-2xl font-bold">Better Accuracy</DialogTitle>
-                <DialogDescription className="text-lg">
-                  Connect your mobile app to add <strong>Fog Data</strong> to this check.
-                </DialogDescription>
+                <DialogDescription className="text-lg">Connect mobile app for <strong>Fog Data</strong>.</DialogDescription>
               </DialogHeader>
-
               <div className="py-8 space-y-4">
-                <Button 
-                   asChild
-                   className="w-full h-20 text-2xl rounded-2xl shadow-md cursor-pointer"
-                >
-                  <a href={downloadUrl} target="_blank" rel="noopener noreferrer">Download App</a>
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  onClick={() => setStep("connect")} 
-                  className="w-full h-14 rounded-xl text-lg border-2"
-                >
-                  I already have the app
-                </Button>
+                <Button asChild className="w-full h-20 text-2xl rounded-2xl"><a href={downloadUrl} target="_blank">Download App</a></Button>
+                <Button variant="outline" onClick={() => setStep("connect")} className="w-full h-14 rounded-xl text-lg border-2">I already have the app</Button>
               </div>
-
               <DialogFooter>
-                <Button 
-                  onClick={() => setStep("connect")} 
-                  className="w-full h-16 bg-green-600 hover:bg-green-700 text-white text-xl rounded-2xl"
-                >
-                  Connect & Continue <ArrowRight className="ml-2 w-6 h-6" />
-                </Button>
+                <Button onClick={() => setStep("connect")} className="w-full h-16 bg-green-600 hover:bg-green-700 text-white text-xl rounded-2xl">Connect & Continue <ArrowRight className="ml-2 w-6 h-6" /></Button>
               </DialogFooter>
             </div>
           ) : (
-            <div className="p-8">
-              <DialogHeader className="items-center text-center">
-                <div className="bg-green-100 p-3 rounded-full mb-2">
-                  <QrCode className="w-8 h-8 text-green-600" />
-                </div>
+            <div className="p-8 text-center">
+              <DialogHeader className="items-center">
+                <div className="bg-green-100 p-3 rounded-full mb-2"><QrCode className="w-8 h-8 text-green-600" /></div>
                 <DialogTitle className="text-2xl font-bold">Scan to Sync</DialogTitle>
-                <DialogDescription>
-                  Enter the 2-digit code shown in your app after scanning.
-                </DialogDescription>
               </DialogHeader>
-
               <div className="flex flex-col items-center py-6">
-                <div className="p-4 bg-white rounded-2xl shadow-inner border mb-8">
-                  <QRCodeSVG value={userHash} size={180} />
-                </div>
-
-                <div className="w-full max-w-[200px] space-y-3">
-                  <div className="flex items-center justify-center gap-2 text-muted-foreground mb-1">
-                    <Lock className="w-4 h-4" />
-                    <span className="text-xs font-semibold uppercase tracking-widest">App Code</span>
-                  </div>
-                  
-                  <Input 
-                    type="text"
-                    maxLength={2}
-                    placeholder="--"
-                    value={userOtpInput}
-                    onChange={(e) => {
-                        setIsError(false);
-                        // Changed to lowerCase because your hash is lowercase
-                        setUserOtpInput(e.target.value.toLowerCase());
-                    }}
-                    className={`h-20 text-center text-4xl font-bold tracking-widest rounded-2xl border-2 transition-colors ${
-                        isError ? "border-red-500 bg-red-50" : "border-primary/20 focus:border-primary"
-                    }`}
-                  />
-                  {isError && (
-                    <p className="text-red-500 text-sm font-medium text-center">
-                      Code mismatch. Try again.
-                    </p>
-                  )}
-                </div>
+                <div className="p-4 bg-white rounded-2xl shadow-inner border mb-8"><QRCodeSVG value={userHash} size={180} /></div>
+                <Input 
+                    type="text" maxLength={2} placeholder="--" value={userOtpInput}
+                    onChange={(e) => { setIsError(false); setUserOtpInput(e.target.value.toLowerCase()); }}
+                    className={`h-20 text-center text-4xl font-bold rounded-2xl border-2 ${isError ? "border-red-500 bg-red-50" : "border-primary/20"}`}
+                />
+                {isError && <p className="text-red-500 text-sm mt-2 font-medium">Code mismatch.</p>}
               </div>
-
               <DialogFooter>
-                <Button 
-                  onClick={handleVerifyAndContinue} 
-                  disabled={userOtpInput.length < 2}
-                  className="w-full h-16 text-xl rounded-2xl bg-primary shadow-lg"
-                >
-                  Verify & Start Test
-                </Button>
+                <Button onClick={handleVerifyAndContinue} disabled={userOtpInput.length < 2} className="w-full h-16 text-xl rounded-2xl">Verify & Start</Button>
               </DialogFooter>
             </div>
           )}
