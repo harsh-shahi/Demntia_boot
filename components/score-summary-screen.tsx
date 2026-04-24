@@ -13,7 +13,7 @@ interface ScoreSummaryScreenProps {
 
 export function ScoreSummaryScreen({ onNext }: ScoreSummaryScreenProps) {
   const [totalScore, setTotalScore] = useState(0)
-  const maxScore = 100
+  const maxScore = 30
 
   useEffect(() => {
     // Pull the final compiled marks from LocalStorage
@@ -21,7 +21,7 @@ export function ScoreSummaryScreen({ onNext }: ScoreSummaryScreenProps) {
     setTotalScore(Math.round(savedData.totalScore))
   }, [])
 
-  const percentage = Math.min(100, Math.round((totalScore / maxScore) * 100))
+  const percentage = Math.min(30, Math.round((totalScore / maxScore) * 100))
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-slide-up p-4">
